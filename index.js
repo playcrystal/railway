@@ -1,41 +1,91 @@
 const mineflayer = require('mineflayer');
+const pvp = require('mineflayer-pvp').plugin;
+const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const armorManager = require('mineflayer-armor-manager');
+const AutoAuth = require('mineflayer-auto-auth');
 
-// Configurações do bot
-const bot = mineflayer.createBot({
-  host: 'hub.playcrystalmc.xyz', // Substitua pelo IP do servidor
-  port: 27411,   // Substitua pela porta do servidor
-  username: 'CrystalMine',       // Substitua pelo nome do bot
-  version: false,              // Deixe falso para detectar automaticamente a versão do servidor
-});
+function createBot() {
+  const bot = mineflayer.createBot({
+    host: 'hub.playcrystalmc.xyz', // IP do servidor
+    port: 27411, // Porta do servidor
+    username: 'CrystalMine', // Nome do bot
+    plugins: [AutoAuth],
+    AutoAuth: { password: 'bot112022' } // Senha do bot
+  });
 
-// Evento ao conectar
-bot.on('login', () => {
-  console.log(${bot.username} conectado com sucesso ao servidor!);
-});
+  bot.loadPlugin(pvp);
+  bot.loadPlugin(armorManager);
+  bot.loadPlugin(pathfinder);
 
-// Evento para manter o bot ativo
-bot.on('end', () => {
-  console.log('Conexão encerrada. Tentando reconectar...');
-  setTimeout(() => {
-    bot.end(); // Encerra qualquer conexão ativa
-    bot.connect(); // Reconnecta ao servidor
-  }, 5000); // Tenta reconectar após 5 segundos
-});
+  bot.on('spawn', () => {
+    console.log(${bot.username} conectado ao servidor!);
+  });
 
-// Evento ao encontrar erros
-bot.on('error', (err) => {
-  console.error('Erro detectado:', err);
-  setTimeout(() => {
-    bot.end(); // Encerra qualquer conexão ativa
-    bot.connect(); // Reconnecta ao servidor
-  }, 5000); // Tenta reconectar após 5 segundos
-});
+  bot.on('kicked', (reason) => {
+    console.log(Fui desconectado: ${reason});
+  });
 
-// Manter o bot ativo mesmo que o servidor desconecte
-bot.on('kicked', (reason) => {
-  console.log(Bot expulso do servidor: ${reason});
-  setTimeout(() => {
-    bot.end();
-    bot.connect();
-  }, 5000);
-});
+  bot.on('error', (err) => {
+    console.log(Erro: ${err});
+  });
+
+  bot.on('end', () => {
+    console.log('Reconectando...');
+    setTimeout(createBot, 5000); // Tenta reconectar após 5 segundos
+  });
+
+  // Funcionalidade de patrulha
+  let guardPos = null;
+
+  function guardArea(pos) {
+    guardPos = pos.clone();
+    if (!bot.pvp.target) {
+      moveToGuardPos();
+    }
+  }
+
+  function stopGuarding() {
+    guardPos = null;
+    bot.pvp.stop();
+    bot.pathfinder.setGoal(null);
+  }
+
+  function moveToGuardPos() {
+    const mcData = require('minecraft-data')(bot.version);
+    bot.pathfinder.setMovements(new Movements(bot, mcData));
+    bot.pathfinder.setGoal(new goals.GoalBlock(guardPos.x, guardPos.y, guardPos.z));
+  }
+
+  bot.on('stoppedAttacking', () => {
+    if (guardPos) {
+      moveToGuardPos();
+    }
+  });
+
+  bot.on('physicTick', () => {
+    if (!guardPos) return;
+    const filter = (e) => e.type === 'mob' && e.position.distanceTo(bot.entity.position) < 16 &&
+                          e.mobType !== 'Armor Stand';
+    const entity = bot.nearestEntity(filter);
+    if (entity) {
+      bot.pvp.attack(entity);
+    }
+  });
+
+  bot.on('chat', (username, message) => {
+    const player = bot.players[username];
+    if (!player || !player.entity) return;
+
+    if (message === 'guard') {
+      bot.chat('Vou proteger esta área!');
+      guardArea(player.entity.position);
+    }
+
+    if (message === 'stop') {
+      bot.chat('Parando proteção.');
+      stopGuarding();
+    }
+  });
+}
+
+createBot();
