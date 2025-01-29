@@ -20,7 +20,7 @@ setInterval(() => {
 function createBot() {
   const bot = mineflayer.createBot({
     host: 'hub.playcrystalmc.xyz',
-    version: false, // Pode ser alterado para uma versão específica, ex: '1.16.5'
+    version: false, // Altere para a versão correta do servidor
     username: 'CrystalMine',
     port: 27411,
     plugins: [AutoAuth],
@@ -41,20 +41,41 @@ function createBot() {
   // Tratamento de erros
   bot.on('error', (err) => {
     console.error('Erro no bot:', err);
+    if (err.code === 'ECONNRESET') {
+      console.log('Conexão reiniciada. Tentando reconectar...');
+      setTimeout(createBot, 5000); // Reconecta após 5 segundos
+    }
   });
 
   bot.on('kicked', (reason) => {
     console.log('Bot kickado:', reason);
+    setTimeout(createBot, 5000); // Reconecta após 5 segundos
   });
 
   // Ações periódicas para evitar inatividade
+  let direction = 0; // 0 = frente, 1 = direita, 2 = trás, 3 = esquerda
+
   setInterval(() => {
     if (bot.entity) {
-      bot.setControlState('jump', true); // Pula periodicamente
-      setTimeout(() => bot.setControlState('jump', false), 500); // Para de pular após 0.5s
       bot.chat('Estou aqui!'); // Envia uma mensagem no chat
+
+      // Pula
+      bot.setControlState('jump', true);
+      setTimeout(() => bot.setControlState('jump', false), 500);
+
+      // Anda em círculos
+      bot.setControlState('forward', true);
+      bot.setControlState(direction === 1 ? 'left' : 'right', true);
+      setTimeout(() => {
+        bot.setControlState('forward', false);
+        bot.setControlState('left', false);
+        bot.setControlState('right', false);
+      }, 1000);
+
+      // Muda a direção
+      direction = (direction + 1) % 4;
     }
-  }, 60000); // Executa a cada 60 segundos
+  }, 30000); // Executa a cada 30 segundos
 
   // Comandos de guarda (opcional)
   let guardPos = null;
